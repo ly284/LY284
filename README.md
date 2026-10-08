@@ -7,7 +7,7 @@
 | 模块 | 说明 | 技术栈 |
 |------|------|--------|
 | `anything llm` | AnythingLLM 的 MCP Server，把本地知识库工作区封装为 MCP 工具供 Agent 调用 | Python 3.10+ / MCP SDK / httpx |
-| `pet hospital` | 宠物医院管理系统（Go 单文件可执行 + 内嵌网页 + REST API），并附带将其数据暴露为 MCP 服务的 Python 服务 | Go 标准库 / Python aiohttp |
+| `pet hospital` | 宠 物医院管理系统（Go 单文件可执行 + 内嵌网页 + REST API），并附带将其数据暴露为 MCP 服务的 Python 服务 | Go 标准库 / Python aiohttp |
 | `agent` | LM Studio OpenAI 兼容接口的对话练习：命令行流式问答 | Python / openai |
 | `anythingllm-web` | 极简的 AnythingLLM 文档上传页面（单 HTML 文件） | 原生 HTML / JS |
 
