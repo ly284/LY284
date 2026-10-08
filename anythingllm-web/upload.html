@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnythingLLM 文档上传</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; }
+        h1 { color: #333; }
+        .upload-area { border: 2px dashed #ccc; padding: 30px; text-align: center; margin: 20px 0; }
+        input[type="file"] { margin: 10px 0; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #result { margin-top: 20px; padding: 15px; border-radius: 4px; display: none; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>AnythingLLM 文档上传</h1>
+    <div class="upload-area">
+        <input type="file" id="fileInput">
+        <br><br>
+        <button id="uploadBtn" onclick="uploadFile()">上传文件</button>
+    </div>
+    <div id="result"></div>
+
+    <script>
+        const API_URL = 'http://localhost:3001/api/v1/document/upload';
+        const API_KEY = 'KRY1Z4H-CPD4FFP-GEVVKDQ-Y0RF4WJ';
+        const WORKSPACE_ID = 'abd685a5-57bf-4c20-be82-fa6957a16c28';
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('result');
+            const uploadBtn = document.getElementById('uploadBtn');
+
+            if (!fileInput.files.length) {
+                alert('请选择文件');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('addToWorkspaces', WORKSPACE_ID);
+
+            uploadBtn.disabled = true;
+            resultDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${API_KEY}` },
+                    body: formData
+                });
+                const data = await response.json();
+                resultDiv.className = response.ok ? 'success' : 'error';
+                resultDiv.textContent = response.ok ? '上传成功！' : `上传失败: ${data.message || '未知错误'}`;
+            } catch (err) {
+                resultDiv.className = 'error';
+                resultDiv.textContent = `错误: ${err.message}`;
+            }
+
+            resultDiv.style.display = 'block';
+            uploadBtn.disabled = false;
+        }
+    </script>
+</body>
+</html>
