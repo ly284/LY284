@@ -1,0 +1,3 @@
+openai>=1.40
+textual>=6.0
+rich>=13.0
