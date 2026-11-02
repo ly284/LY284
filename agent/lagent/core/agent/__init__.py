@@ -32,7 +32,11 @@ def create_agent(config: Optional[AppConfig] = None, config_path: Optional[str] 
 
     app_config = config or load_config(config_path)
     client = LLMClient(app_config.llm)
-    registry = build_registry()
+    registry = build_registry(
+        search_api_key=app_config.search.api_key,
+        search_endpoint=app_config.search.endpoint,
+        search_timeout=app_config.search.timeout,
+    )
     conversation = Conversation(system_prompt=app_config.agent.system_prompt)
     return AgentEngine(
         client=client,

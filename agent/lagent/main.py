@@ -1,7 +1,7 @@
 """lagent 入口：解析命令行、组装 core、启动界面。
 
 界面通过 UI_RUNNERS 注册表扩展，未来新增 Web / Desktop 界面时
-只需增加一条注册项，无需改动 core。
+只需增加一 条注册项，无需改动 core。
 """
 
 from __future__ import annotations

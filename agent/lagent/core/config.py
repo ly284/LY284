@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import configparser
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-__all__ = ["LLMConfig", "AgentConfig", "AppConfig", "ConfigError", "load_config"]
+__all__ = [
+    "LLMConfig",
+    "AgentConfig",
+    "SearchConfig",
+    "AppConfig",
+    "ConfigError",
+    "load_config",
+]
 
 DEFAULT_CONFIG_FILE = "config.ini"
 ENV_API_KEY = "LAGENT_API_KEY"
@@ -46,11 +53,25 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
+class SearchConfig:
+    """网络搜索服务配置（百度千帆 AI 搜索）。"""
+
+    api_key: str = ""
+    endpoint: str = "https://qianfan.baidubce.com/v2/ai_search/web_search"
+    timeout: float = 30.0
+
+    @property
+    def enabled(self) -> bool:
+        return bool((self.api_key or "").strip())
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """应用总配置。"""
 
     llm: LLMConfig
     agent: AgentConfig
+    search: SearchConfig = field(default_factory=SearchConfig)
 
 
 def _read_ini(path: Path) -> configparser.ConfigParser:
@@ -116,6 +137,18 @@ def load_config(
     if not resolved_api_key:
         raise ConfigError(f"缺少 api_key：请在 [llm] 段或环境变量 {ENV_API_KEY} 中配置")
 
+    search_sec = cfg["search"] if cfg.has_section("search") else {}
+    try:
+        search_timeout = float((search_sec.get("timeout", "30") or "30").strip())
+    except ValueError as exc:
+        raise ConfigError("search.timeout 必须是数值") from exc
+    search_config = SearchConfig(
+        api_key=(search_sec.get("api_key", "") or "").strip(),
+        endpoint=(search_sec.get("endpoint", "") or "").strip()
+        or "https://qianfan.baidubce.com/v2/ai_search/web_search",
+        timeout=search_timeout,
+    )
+
     agent_sec = cfg["agent"] if cfg.has_section("agent") else {}
     try:
         max_rounds = int(agent_sec.get("max_rounds", "5") or "5")
@@ -134,4 +167,5 @@ def load_config(
             max_rounds=max_rounds,
             system_prompt=(agent_sec.get("system_prompt", "") or "").strip(),
         ),
+        search=search_config,
     )
