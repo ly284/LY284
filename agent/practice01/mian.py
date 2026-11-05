@@ -9,7 +9,7 @@ import configparser
 from openai import OpenAI
 
 # 读取同目录下的 config.ini
-cfg = configparser.ConfigParser()
+cfg = configparser.ConfigParser( )
 cfg.read("config.ini", encoding="utf-8")
 sec = cfg["llm"]
 model = sec.get("model")

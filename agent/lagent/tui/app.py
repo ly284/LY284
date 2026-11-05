@@ -6,15 +6,15 @@
 
 from __future__ import annotations
 
+import threading
 import time
 
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
 from textual.widgets import Footer, Header, Input, Static
 
-from core.agent import AgentEngine
+from core.agent import AgentEngine, TurnCancelled
 from core.events import (
     AnswerDelta,
     ErrorEvent,
@@ -26,7 +26,11 @@ from core.events import (
     TurnLimited,
 )
 
-from .messages import AgentEventMessage, StreamDeltaMessage
+from .messages import (
+    AgentEventMessage,
+    StreamDeltaMessage,
+    TurnInterruptedMessage,
+)
 from .widgets.chat_view import ChatView
 from .widgets.stream_view import StreamView
 
@@ -38,6 +42,27 @@ STATUS_IDLE = "就绪"
 STATUS_THINKING = "思考中…"
 STATUS_TOOL = "执行工具…"
 STATUS_ERROR = "出错"
+
+
+class PasteInput(Input):
+    """单行输入框，粘贴内容会完整折叠为一行，绝不把换行当成提交。
+
+    修正：原生 Input 对粘贴多行的处理可能只保留第一行/把换行当回车，
+    这里接管粘贴事件，把 \\r\\n / \\r / \\n 统一折叠为空格后再插入，
+    这样所有内容都保留、且不会误触发发送。
+    """
+
+    def _on_paste(self, event) -> None:
+        raw = getattr(event, "text", "") or ""
+        folded = (
+            raw.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+            if raw
+            else ""
+        )
+        if folded:
+            self.insert(folded, len(self.value))
+        event.prevent_default()
+        event.stop()
 
 
 class AgentApp(App):
@@ -71,12 +96,15 @@ class AgentApp(App):
         Binding("ctrl+q", "quit", "退出"),
         Binding("ctrl+l", "clear_chat", "清屏"),
         Binding("ctrl+r", "reset_session", "重置会话"),
+        Binding("escape", "stop", "打断"),
+        Binding("ctrl+c", "stop", "打断"),
     ]
 
     def __init__(self, engine: AgentEngine) -> None:
         super().__init__()
         self._engine = engine
         self._busy = False
+        self._cancel: threading.Event | None = None
 
     # ---------- 布局 ----------
 
@@ -85,7 +113,7 @@ class AgentApp(App):
         yield ChatView(id="chat")
         yield StreamView(id="stream")
         yield Static(STATUS_IDLE, id="status")
-        yield Input(placeholder="输入问题，回车发送；ctrl+q 退出", id="prompt")
+        yield PasteInput(placeholder="输入问题，回车发送（支持多行粘贴）；Esc / Ctrl+C 打断；ctrl+q 退出", id="prompt")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -96,8 +124,12 @@ class AgentApp(App):
 
     @on(Input.Submitted, "#prompt")
     def handle_submit(self, event: Input.Submitted) -> None:
+        """回车提交（粘贴换行已被 PasteInput 折叠，不会误触发）。"""
         question = event.value.strip()
         event.input.value = ""
+        self._dispatch(question)
+
+    def _dispatch(self, question: str) -> None:
         if not question:
             return
         if question == "exit":
@@ -107,15 +139,23 @@ class AgentApp(App):
             self.notify("上一个问题尚未完成，请稍候", severity="warning")
             return
         self._busy = True
+        self._cancel = threading.Event()
         self.query_one("#prompt", Input).disabled = True
         self.query_one("#status", Static).update(STATUS_THINKING)
         self.query_one(ChatView).show_user(question)
-        self.run_turn(question)
+        self.run_turn(question, self._cancel)
+
+    def action_stop(self) -> None:
+        """打断当前生成或工具执行，回到输入提示符（不退出程序）。"""
+        if not self._busy or self._cancel is None:
+            return
+        self._cancel.set()
+        self.query_one("#status", Static).update("正在打断…")
 
     # ---------- 工作线程 ----------
 
     @work(thread=True, exclusive=True, group="turn")
-    def run_turn(self, question: str) -> None:
+    def run_turn(self, question: str, cancel_event: threading.Event) -> None:
         """在线程中消费 core 事件流，合并流式增量后回投给界面。"""
         pending = []
         last_flush = time.monotonic()
@@ -130,7 +170,7 @@ class AgentApp(App):
             self.post_message(StreamDeltaMessage(text, replace))
 
         try:
-            for event in self._engine.ask(question):
+            for event in self._engine.ask(question, cancel_event):
                 if isinstance(event, AnswerDelta):
                     pending.append(event.text)
                     if time.monotonic() - last_flush >= FLUSH_INTERVAL:
@@ -138,6 +178,9 @@ class AgentApp(App):
                     continue
                 flush()
                 self.post_message(AgentEventMessage(event))
+        except TurnCancelled:
+            flush()
+            self.post_message(TurnInterruptedMessage())
         except Exception as exc:  # noqa: BLE001 - 兜底，避免线程静默失败
             flush()
             self.post_message(AgentEventMessage(ErrorEvent(message=str(exc))))
@@ -175,6 +218,13 @@ class AgentApp(App):
             self._set_status(STATUS_ERROR)
             self._set_idle(error=True)
 
+    def on_turn_interrupted_message(self, message: TurnInterruptedMessage) -> None:
+        stream = self.query_one(StreamView)
+        stream.clear()
+        stream.display = False
+        self.notify("已打断当前操作")
+        self._set_idle()
+
     def on_stream_delta_message(self, message: StreamDeltaMessage) -> None:
         stream = self.query_one("#stream", StreamView)
         if not stream.display:
@@ -195,6 +245,7 @@ class AgentApp(App):
 
     def _set_idle(self, error: bool = False) -> None:
         self._busy = False
+        self._cancel = None
         self.query_one("#prompt", Input).disabled = False
         self.query_one("#prompt", Input).focus()
         self._set_status(STATUS_IDLE if not error else STATUS_ERROR)

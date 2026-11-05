@@ -5,11 +5,21 @@ from __future__ import annotations
 from typing import Optional
 
 from .base import ToolError, ToolRegistry, ToolSpec
+from .beatra_tools import build_beatra_tools
 from .file_tools import FILE_TOOLS
+from .run_cli import build_run_cli
+from .skill_tools import build_create_skill_tool
 from .system_tools import SYSTEM_TOOLS
 from .web_search import DEFAULT_ENDPOINT, build_search_tool
 
-__all__ = ["ToolError", "ToolRegistry", "ToolSpec", "build_registry"]
+__all__ = [
+    "ToolError",
+    "ToolRegistry",
+    "ToolSpec",
+    "build_beatra_tools",
+    "build_create_skill_tool",
+    "build_registry",
+]
 
 
 def build_registry(
@@ -26,6 +36,9 @@ def build_registry(
     registry = ToolRegistry()
     registry.register_many(SYSTEM_TOOLS)
     registry.register_many(FILE_TOOLS)
+    registry.register_many(build_beatra_tools())
+    registry.register(build_create_skill_tool())
+    registry.register(build_run_cli())
     registry.register(
         build_search_tool(
             search_api_key or "",

@@ -9,7 +9,7 @@ from textual.message import Message
 
 from core.events import Event
 
-__all__ = ["AgentEventMessage", "StreamDeltaMessage"]
+__all__ = ["AgentEventMessage", "StreamDeltaMessage", "TurnInterruptedMessage"]
 
 
 class AgentEventMessage(Message):
@@ -27,3 +27,10 @@ class StreamDeltaMessage(Message):
         super().__init__()
         self.text = text
         self.replace = replace
+
+
+class TurnInterruptedMessage(Message):
+    """本轮生成/工具执行被用户主动中断，界面应回到空闲态。"""
+
+    def __init__(self) -> None:
+        super().__init__()

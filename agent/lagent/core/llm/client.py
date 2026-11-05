@@ -11,6 +11,8 @@ from ..config import LLMConfig
 
 __all__ = ["ToolCallDelta", "StreamChunk", "LLMClient"]
 
+DEFAULT_TIMEOUT = 120.0  # 秒，单次请求超时上限，避免网络挂起时无法恢复
+
 
 @dataclass(frozen=True)
 class ToolCallDelta:

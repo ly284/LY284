@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict, Generator, Iterator, List, Optional, Tuple
 
 from ..events import (
@@ -23,9 +24,13 @@ from ..llm.thinking import ThinkFilter
 from ..session import Conversation
 from ..tools import ToolRegistry
 
-__all__ = ["AgentEngine"]
+__all__ = ["AgentEngine", "TurnCancelled"]
 
 DEFAULT_MAX_ROUNDS = 5
+
+
+class TurnCancelled(Exception):
+    """本轮执行被用户中断（界面收到后应回到空闲态，而非当作错误）。"""
 
 
 class AgentEngine:
@@ -72,12 +77,21 @@ class AgentEngine:
         self._conversation.clear()
         return SessionCleared()
 
-    def ask(self, question: str) -> Iterator[Event]:
+    def ask(
+        self,
+        question: str,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> Iterator[Event]:
         """提出一个问题，逐步产出本轮事件。
 
         事件序列：AnswerDelta* （流式回答），其间穿插
         ToolCallStarted/ToolCallFinished，最后以 TurnFinished、
         TurnLimited 或 ErrorEvent 结束。失败时会话历史自动回滚。
+
+        Args:
+            cancel_event: 可选的取消信号；被置位时本轮在安全的
+                边界（每块流式增量、每次工具调用前）抛出 TurnCancelled，
+                调用方应据此回到空闲态而不是当作错误。
         """
         question = (question or "").strip()
         if not question:
@@ -86,8 +100,11 @@ class AgentEngine:
         mark = self._conversation.mark()
         self._conversation.add_user(question)
         try:
-            for event in self._run_turn():
+            for event in self._run_turn(cancel_event):
                 yield event
+        except TurnCancelled:
+            self._conversation.rollback(mark)
+            raise
         except Exception as exc:  # noqa: BLE001 - 网络/SDK 异常统一转事件
             self._conversation.rollback(mark)
             yield ErrorEvent(
@@ -97,11 +114,16 @@ class AgentEngine:
 
     # ---------- 内部实现 ----------
 
-    def _run_turn(self) -> Generator[Event, None, None]:
+    def _run_turn(
+        self,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> Generator[Event, None, None]:
         rounds = 0
         while rounds < self._max_rounds:
+            if cancel_event is not None and cancel_event.is_set():
+                raise TurnCancelled()
             rounds += 1
-            printed, calls = yield from self._stream_round()
+            printed, calls = yield from self._stream_round(cancel_event)
 
             if not calls:
                 # 没有工具调用，本轮回答结束
@@ -112,17 +134,22 @@ class AgentEngine:
             # 把工具调用记入历史，再把执行结果交给模型继续回答
             self._conversation.add_assistant(printed or None, tool_calls=calls)
             for call in calls:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise TurnCancelled()
                 fn = call["function"]
                 name = fn.get("name") or ""
                 arguments = fn.get("arguments") or "{}"
                 yield ToolCallStarted(name=name, arguments=arguments)
-                result = self._registry.execute(name, arguments)
+                result = self._registry.execute(name, arguments, cancel_event=cancel_event)
                 yield ToolCallFinished(name=name, result=result)
                 self._conversation.add_tool_result(call["id"], result)
 
         yield TurnLimited(rounds=self._max_rounds)
 
-    def _stream_round(self) -> Generator[Event, None, Tuple[str, List[Dict[str, Any]]]]:
+    def _stream_round(
+        self,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> Generator[Event, None, Tuple[str, List[Dict[str, Any]]]]:
         """请求一轮流式回答，产出增量事件，返回 (可见文本, 工具调用列表)。"""
         flt = ThinkFilter()
         printed = ""
@@ -132,6 +159,8 @@ class AgentEngine:
             self._conversation.messages, tools=self._registry.openai_tools()
         )
         for chunk in stream:
+            if cancel_event is not None and cancel_event.is_set():
+                raise TurnCancelled()
             for tc in chunk.tool_calls:
                 slot = pending.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
                 if tc.id:

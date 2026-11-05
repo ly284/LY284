@@ -50,6 +50,7 @@ class AgentConfig:
 
     max_rounds: int = 5
     system_prompt: str = ""
+    skills_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,7 @@ def load_config(
         agent=AgentConfig(
             max_rounds=max_rounds,
             system_prompt=(agent_sec.get("system_prompt", "") or "").strip(),
+            skills_dir=(agent_sec.get("skills_dir", "") or "").strip(),
         ),
         search=search_config,
     )

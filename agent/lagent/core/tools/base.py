@@ -2,17 +2,34 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
+import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
-__all__ = ["ToolSpec", "ToolRegistry", "ToolError"]
+__all__ = ["ToolSpec", "ToolRegistry", "ToolError", "ToolCancelled", "get_cancel_event"]
 
 Handler = Callable[..., str]
+
+# 当前轮次的取消信号，通过 contextvar 暴露给每个 handler（如 RunCLI），
+# 使长时间阻塞的工具能被 ui 层的中断请求及时终止。
+_cancel_var: "contextvars.ContextVar[Optional[threading.Event]]" = contextvars.ContextVar(
+    "tool_cancel", default=None
+)
+
+
+def get_cancel_event() -> Optional[threading.Event]:
+    """返回当前正在执行工具的取消信号（无则返回 None）。"""
+    return _cancel_var.get()
 
 
 class ToolError(Exception):
     """工具参数或执行错误，消息会回传给模型。"""
+
+
+class ToolCancelled(Exception):
+    """工具执行被用户中断，上层应据此终止本轮，而不是作为错误回传模型。"""
 
 
 @dataclass(frozen=True)
@@ -80,19 +97,39 @@ class ToolRegistry:
     def openai_tools(self) -> List[Dict[str, Any]]:
         return [spec.to_openai() for spec in self._tools.values()]
 
-    def execute(self, name: str, arguments: Optional[str]) -> str:
+    def execute(
+        self,
+        name: str,
+        arguments: Optional[str],
+        cancel_event: Optional[threading.Event] = None,
+    ) -> str:
         """执行工具并返回交给模型的文本结果。
 
         与原始实现一致：未知工具与执行异常都转成文本回传，不抛出，
         避免单个工具失败中断整轮对话。
+
+        Args:
+            cancel_event: 可选的取消信号；会通过 contextvar 暴露给 handler，
+                并在调用前检查——已被中断时抛 ToolCancelled（上层据此终止本轮）。
         """
         spec = self._tools.get(name)
         if spec is None:
             return f"未找到工具: {name}"
+        if cancel_event is not None and cancel_event.is_set():
+            raise ToolCancelled()
         try:
             args = _load_arguments(arguments)
-            result = spec.handler(**args)
+            if cancel_event is not None:
+                token = _cancel_var.set(cancel_event)
+                try:
+                    result = spec.handler(**args)
+                finally:
+                    _cancel_var.reset(token)
+            else:
+                result = spec.handler(**args)
             return result if isinstance(result, str) else str(result)
+        except ToolCancelled:
+            raise
         except ToolError as exc:
             return f"工具执行失败: {exc}"
         except TypeError as exc:
