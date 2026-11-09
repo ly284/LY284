@@ -6,6 +6,7 @@ from typing import Optional
 
 from .base import ToolError, ToolRegistry, ToolSpec
 from .beatra_tools import build_beatra_tools
+from .context_tools import build_recall_context_tool
 from .file_tools import FILE_TOOLS
 from .run_cli import build_run_cli
 from .skill_tools import build_create_skill_tool
@@ -18,6 +19,7 @@ __all__ = [
     "ToolSpec",
     "build_beatra_tools",
     "build_create_skill_tool",
+    "build_recall_context_tool",
     "build_registry",
 ]
 

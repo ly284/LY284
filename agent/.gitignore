@@ -1,2 +1,13 @@
 config.ini
 config.by
+__pycache__/
+*.pyc
+.mcp.json
+config.py
+venv/
+.venv/
+# 忽略 Agent 工作区
+work space/
+
+# 忽略带密钥的配置文件
+config.py

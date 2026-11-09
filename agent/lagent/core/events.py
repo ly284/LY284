@@ -17,6 +17,12 @@ __all__ = [
     "TurnLimited",
     "SessionCleared",
     "ErrorEvent",
+    "ContextUsage",
+    "ContextWarning",
+    "ContextCompressionStarted",
+    "ContextCompressionFinished",
+    "ContextCompressionFailed",
+    "ContextCompressionSkipped",
 ]
 
 
@@ -83,3 +89,55 @@ class ErrorEvent(Event):
 
     message: str
     detail: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ContextUsage(Event):
+    """每轮结束后汇报上下文占用情况（供界面展示长度与百分比）。"""
+
+    used: int
+    window: int
+    percent: float
+    window_default: bool = False
+    locked: bool = False
+
+
+@dataclass(frozen=True)
+class ContextWarning(Event):
+    """上下文占用达到阈值（默认 60%），提示用户执行 /compact。"""
+
+    used: int
+    window: int
+    percent: float
+
+
+@dataclass(frozen=True)
+class ContextCompressionStarted(Event):
+    """压缩开始；原始上下文已成功归档。"""
+
+    archive_id: str
+
+
+@dataclass(frozen=True)
+class ContextCompressionFinished(Event):
+    """压缩成功：摘要已替换会话历史，原始上下文已归档。"""
+
+    archive_id: str
+    summary: str
+    original: str
+    used_after: int
+
+
+@dataclass(frozen=True)
+class ContextCompressionFailed(Event):
+    """压缩失败：会话历史保持不变，可重新执行 /compact。"""
+
+    message: str
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class ContextCompressionSkipped(Event):
+    """对话历史过短，暂不需要压缩。"""
+
+    reason: str = ""

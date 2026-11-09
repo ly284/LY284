@@ -7,25 +7,27 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from core import ConfigError, create_agent, load_config
-from core.config import AppConfig
+from core.config import AppConfig, DEFAULT_CONFIG_FILE, write_default_config
 
 __all__ = ["UI_RUNNERS", "build_parser", "main"]
 
 
-def _run_tui(config: AppConfig) -> int:
+def _run_tui(config: AppConfig, config_hint: Optional[str] = None) -> int:
     from tui.app import AgentApp
 
     engine = create_agent(config)
-    AgentApp(engine).run()
+    AgentApp(engine, config_hint=config_hint).run()
     return 0
 
 
 # 界面注册表：名称 -> 启动函数。未来 Web/Desktop 在此扩展。
-UI_RUNNERS: Dict[str, Callable[[AppConfig], int]] = {
+UI_RUNNERS: Dict[str, Callable[[AppConfig, Optional[str]], int]] = {
     "tui": _run_tui,
 }
 
@@ -55,6 +57,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[list] = None) -> int:
     args = build_parser().parse_args(argv)
+
+    # 未显式指定 config 且当前目录没有配置时，自动创建一份含 mock 值的模板，
+    # 启动后弹出对话框提示用户修改 config.ini 并重新启动。
+    config_hint: Optional[str] = None
+    if args.config is None and not os.environ.get("LAGENT_CONFIG", "").strip():
+        config_path = Path(DEFAULT_CONFIG_FILE)
+        if not config_path.is_file():
+            try:
+                config_hint = write_default_config(config_path)
+            except OSError as exc:
+                print(f"无法创建示例配置 config.ini: {exc}", file=sys.stderr)
+                return 2
+
     try:
         config = load_config(
             args.config,
@@ -67,7 +82,7 @@ def main(argv: Optional[list] = None) -> int:
         return 2
 
     runner = UI_RUNNERS[args.ui]
-    return runner(config)
+    return runner(config, config_hint)
 
 
 if __name__ == "__main__":

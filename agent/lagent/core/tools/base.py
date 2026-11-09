@@ -65,15 +65,21 @@ def _load_arguments(raw: Optional[str]) -> Dict[str, Any]:
 
 
 class ToolRegistry:
-    """工具集合：负责声明导出与按名分发执行。"""
+    """工具集合：负责声明导出与按名分发执行。
+
+    使用线程锁保护注册表，允许 MCP 工具在后台异步加载时与
+    模型调用线程并发安全地注册 / 读取。
+    """
 
     def __init__(self) -> None:
         self._tools: Dict[str, ToolSpec] = {}
+        self._lock = threading.Lock()
 
     def register(self, spec: ToolSpec) -> "ToolRegistry":
-        if spec.name in self._tools:
-            raise ValueError(f"工具重名: {spec.name}")
-        self._tools[spec.name] = spec
+        with self._lock:
+            if spec.name in self._tools:
+                raise ValueError(f"工具重名: {spec.name}")
+            self._tools[spec.name] = spec
         return self
 
     def register_many(self, specs: List[ToolSpec]) -> "ToolRegistry":
@@ -82,20 +88,25 @@ class ToolRegistry:
         return self
 
     def get(self, name: str) -> Optional[ToolSpec]:
-        return self._tools.get(name)
+        with self._lock:
+            return self._tools.get(name)
 
     def __contains__(self, name: str) -> bool:
-        return name in self._tools
+        with self._lock:
+            return name in self._tools
 
     def __len__(self) -> int:
-        return len(self._tools)
+        with self._lock:
+            return len(self._tools)
 
     @property
     def names(self) -> List[str]:
-        return list(self._tools)
+        with self._lock:
+            return list(self._tools)
 
     def openai_tools(self) -> List[Dict[str, Any]]:
-        return [spec.to_openai() for spec in self._tools.values()]
+        with self._lock:
+            return [spec.to_openai() for spec in self._tools.values()]
 
     def execute(
         self,
@@ -112,7 +123,8 @@ class ToolRegistry:
             cancel_event: 可选的取消信号；会通过 contextvar 暴露给 handler，
                 并在调用前检查——已被中断时抛 ToolCancelled（上层据此终止本轮）。
         """
-        spec = self._tools.get(name)
+        with self._lock:
+            spec = self._tools.get(name)
         if spec is None:
             return f"未找到工具: {name}"
         if cancel_event is not None and cancel_event.is_set():

@@ -42,6 +42,13 @@ class Conversation:
     def add(self, message: Dict[str, Any]) -> None:
         self._messages.append(message)
 
+    def insert_after_system(self, message: Dict[str, Any]) -> None:
+        """把消息插入到开头的 System Prompt 之后（如 AGENTS.md 指引）。"""
+        if self._messages and self._messages[0].get("role") == "system":
+            self._messages.insert(1, message)
+        else:
+            self._messages.insert(0, message)
+
     def add_user(self, content: str) -> None:
         self._messages.append({"role": "user", "content": content})
 
@@ -69,3 +76,21 @@ class Conversation:
                 continue
             out.append({"role": role, "content": m.get("content") or ""})
         return out
+
+    def replace_with_summary(self, summary: str) -> None:
+        """用压缩摘要替换全部历史消息。
+
+        保留开头的 System Prompt（若有），后续仅保留一条承载摘要的
+        user 消息；工具定义仍由 ToolRegistry 提供，不受影响。
+        """
+        system: Optional[Dict[str, Any]] = None
+        if self._messages and self._messages[0].get("role") == "system":
+            system = self._messages[0]
+        self.clear()
+        if system is not None:
+            self._messages.append(system)
+        self._messages.append({"role": "user", "content": summary})
+
+    def replace_all(self, messages: List[Dict[str, Any]]) -> None:
+        """用给定消息列表整体替换会话历史（用于 /resume 恢复会话）。"""
+        self._messages = [dict(m) for m in messages]

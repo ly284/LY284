@@ -1,0 +1,5 @@
+{"role": "system", "content": "你是助手"}
+{"role": "user", "content": "帮我读取 a.txt"}
+{"role": "assistant", "content": null, "tool_calls": [{"type": "function", "function": {"name": "read_text_file", "arguments": "{\"path\": \"a.txt\"}"}}]}
+{"role": "tool", "tool_call_id": "call_1", "content": "a.txt 内容: hello 你好"}
+{"role": "assistant", "content": "已读取完成"}

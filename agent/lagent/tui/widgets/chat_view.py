@@ -57,3 +57,17 @@ class ChatView(RichLog):
     def show_info(self, message: str) -> None:
         self.write(Text(message, style="dim italic"))
         self.write("")
+
+    def show_transcript(self, messages: list) -> None:
+        """渲染恢复会话时的历史（user / assistant / system 逐条显示）。"""
+        for message in messages:
+            role = message.get("role", "")
+            content = message.get("content") or ""
+            if role == "tool":
+                continue
+            if role == "user":
+                self.show_user(content)
+            elif role == "assistant":
+                self.show_answer(content)
+            elif role == "system":
+                self.write(Text(f"[系统] {_clip(content)}", style="dim"))

@@ -14,7 +14,9 @@ __all__ = [
     "SearchConfig",
     "AppConfig",
     "ConfigError",
+    "DEFAULT_CONFIG_TEMPLATE",
     "load_config",
+    "write_default_config",
 ]
 
 DEFAULT_CONFIG_FILE = "config.ini"
@@ -35,6 +37,7 @@ class LLMConfig:
     base_url: str
     model: str
     api_key: str
+    context_window: Optional[int] = None
 
     @property
     def masked_api_key(self) -> str:
@@ -51,6 +54,9 @@ class AgentConfig:
     max_rounds: int = 5
     system_prompt: str = ""
     skills_dir: str = ""
+    context_dir: str = ".agents/context"
+    sessions_dir: str = ".agents/sessions"
+    compress_threshold: float = 0.6
 
 
 @dataclass(frozen=True)
@@ -131,6 +137,16 @@ def load_config(
     resolved_model = _pick(model, ENV_MODEL, sec.get("model", ""))
     resolved_api_key = _pick(api_key, ENV_API_KEY, sec.get("api_key", ""))
 
+    context_window: Optional[int] = None
+    raw_window = (sec.get("context_window", "") or "").strip()
+    if raw_window:
+        try:
+            context_window = int(raw_window)
+        except ValueError as exc:
+            raise ConfigError("llm.context_window 必须是整数") from exc
+        if context_window < 1:
+            raise ConfigError("llm.context_window 必须 >= 1")
+
     if not resolved_base_url:
         raise ConfigError(f"缺少 base_url：请在 [llm] 段或环境变量 {ENV_BASE_URL} 中配置")
     if not resolved_model:
@@ -158,16 +174,73 @@ def load_config(
     if max_rounds < 1:
         raise ConfigError("agent.max_rounds 必须 >= 1")
 
+    try:
+        compress_threshold = float(agent_sec.get("compress_threshold", "0.6") or "0.6")
+    except ValueError as exc:
+        raise ConfigError("agent.compress_threshold 必须是数值（0~1）") from exc
+    compress_threshold = min(1.0, max(0.01, compress_threshold))
+
+    context_dir = (agent_sec.get("context_dir", "") or "").strip() or ".agents/context"
+    sessions_dir = (agent_sec.get("sessions_dir", "") or "").strip() or ".agents/sessions"
+
     return AppConfig(
         llm=LLMConfig(
             base_url=resolved_base_url,
             model=resolved_model,
             api_key=resolved_api_key,
+            context_window=context_window,
         ),
         agent=AgentConfig(
             max_rounds=max_rounds,
             system_prompt=(agent_sec.get("system_prompt", "") or "").strip(),
             skills_dir=(agent_sec.get("skills_dir", "") or "").strip(),
+            context_dir=context_dir,
+            sessions_dir=sessions_dir,
+            compress_threshold=compress_threshold,
         ),
         search=search_config,
     )
+
+
+DEFAULT_CONFIG_TEMPLATE = """# lagent 配置文件示例。
+# 启动时若当前目录没有 config.ini，程序会自动创建本文件——
+# 请把下方 api_key 修改为你自己的密钥后重新启动。
+
+[llm]
+base_url = https://api.siliconflow.cn/v1
+model = deepseek-ai/DeepSeek-V4.1-Flash
+api_key = sk-mock-please-edit-me
+# 可选：当前模型的上下文窗口大小（Token）。留空时尝试向模型服务查询，
+# 查询不到则默认使用 128k，并在界面标注「默认」。
+# context_window = 128000
+
+[search]
+# 百度千帆 AI 搜索 API Key（可留空，searchWeb 工具会提示未启用）
+api_key =
+
+[agent]
+# 每轮最多允许的模型-工具循环次数
+max_rounds = 5
+# 上下文占用达到该比例时提示执行 /compact（0~1）
+compress_threshold = 0.6
+# 上下文归档目录（压缩前保存完整原始上下文）
+context_dir = .agents/context
+# 会话保存目录（/new、/save、/resume 使用）
+sessions_dir = .agents/sessions
+# 可选：Agent 的系统提示词（追加到工具定义之前）
+# system_prompt = 你是一名乐于助人的助手。
+# 可选：技能目录（默认在项目根目录下查找 .agents/skills）
+# skills_dir =
+"""
+
+
+def write_default_config(path: Optional[str] = None) -> str:
+    """当前目录缺少 config.ini 时写入一份带 mock 值的完整配置模板。
+
+    返回写入的绝对路径。内容可被 load_config 直接解析，保证程序仍能
+    正常启动（界面弹出提示后退出）。
+    """
+    target = Path(path) if path else Path(DEFAULT_CONFIG_FILE)
+    with open(target, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(DEFAULT_CONFIG_TEMPLATE)
+    return str(target.absolute())

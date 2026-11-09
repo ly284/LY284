@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from .config import AgentConfig, AppConfig, ConfigError, LLMConfig, load_config
+from .config import AgentConfig, AppConfig, ConfigError, LLMConfig, load_config, write_default_config
 from .agent import AgentEngine, create_agent
 
 __all__ = [
@@ -21,4 +21,5 @@ __all__ = [
     "LLMConfig",
     "create_agent",
     "load_config",
+    "write_default_config",
 ]

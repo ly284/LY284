@@ -48,6 +48,7 @@ class LLMClient:
         if timeout is not None:
             kwargs["timeout"] = timeout
         self._client = OpenAI(**kwargs)
+        self._last_usage: Optional[int] = None
 
     @property
     def config(self) -> LLMConfig:
@@ -56,6 +57,11 @@ class LLMClient:
     @property
     def model(self) -> str:
         return self._config.model
+
+    @property
+    def last_usage(self) -> Optional[int]:
+        """最近一次请求的 Token 使用量（total_tokens）；拿不到时为 None。"""
+        return self._last_usage
 
     def stream(
         self,
@@ -72,13 +78,21 @@ class LLMClient:
             "model": self._config.model,
             "messages": list(messages),
             "stream": True,
+            # 请求最终的 usage 统计，便于上层获取真实 Token 用量
+            "stream_options": {"include_usage": True},
         }
         tool_list = list(tools) if tools else None
         if tool_list:
             request["tools"] = tool_list
 
+        self._last_usage = None
         response = self._client.chat.completions.create(**request)
         for chunk in response:
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                total = getattr(usage, "total_tokens", None)
+                if total:
+                    self._last_usage = int(total)
             if not getattr(chunk, "choices", None):
                 continue
             delta = chunk.choices[0].delta
@@ -96,3 +110,64 @@ class LLMClient:
                 )
             if text or call_deltas:
                 yield StreamChunk(text=text, tool_calls=tuple(call_deltas))
+
+    def complete(
+        self,
+        messages: Sequence[Dict[str, Any]],
+        *,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.3,
+    ) -> str:
+        """发起非流式对话请求，返回完整回答文本（用于上下文压缩等场景）。"""
+        request: Dict[str, Any] = {
+            "model": self._config.model,
+            "messages": list(messages),
+            "stream": False,
+            "temperature": temperature,
+        }
+        if max_tokens is not None:
+            request["max_tokens"] = max_tokens
+
+        response = self._client.chat.completions.create(**request)
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            total = getattr(usage, "total_tokens", None)
+            if total:
+                self._last_usage = int(total)
+        return getattr(response.choices[0].message, "content", None) or ""
+
+    def fetch_context_window(self, timeout: float = 3.0) -> Optional[int]:
+        """尝试从模型服务查询当前模型的上下文窗口大小。
+
+        拿不到时返回 None，由上层回退到默认 128k（并标记「默认」）。
+        """
+        try:
+            model_obj = self._client.models.retrieve(
+                self._config.model, timeout=timeout
+            )
+        except Exception:  # noqa: BLE001 - 查询失败只是回退默认值，不阻断
+            return None
+
+        if isinstance(model_obj, dict):
+            data = model_obj
+        else:
+            data = getattr(model_obj, "model_dump", lambda: {})()
+            if not data:
+                data = {}
+                for attr in ("context_length", "context_window", "max_context"):
+                    if getattr(model_obj, attr, None) is not None:
+                        data = {"context_length": getattr(model_obj, attr)}
+                        break
+
+        for key in ("context_length", "context_window", "max_context", "max_context_length"):
+            value = data.get(key)
+            if isinstance(value, (int, float)) and int(value) > 0:
+                return int(value)
+        # 某些服务把元信息放在 meta 里
+        meta = data.get("meta") or {}
+        if isinstance(meta, dict):
+            for key in ("context_length", "context_window", "max_context"):
+                value = meta.get(key)
+                if isinstance(value, (int, float)) and int(value) > 0:
+                    return int(value)
+        return None
