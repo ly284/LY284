@@ -1,10 +1,12 @@
 import sys
-sys.path.insert(0, r"L:\LY284\agent\lagent")
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.mcp import load_mcp_servers, MCPClientManager, build_mcp_registry
 from core.tools import ToolRegistry
 
-servs = load_mcp_servers(path=r"L:\LY284\.mcp.json")
+servs = load_mcp_servers()  # 按当前目录逐级向上查找 .mcp.json（模板见 .mcp.json.example）
 mgr = MCPClientManager(servs)
 reg = ToolRegistry()
 build_mcp_registry(reg, manager=mgr)

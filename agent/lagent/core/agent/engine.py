@@ -46,10 +46,13 @@ __all__ = ["AgentEngine", "TurnCancelled"]
 
 DEFAULT_MAX_ROUNDS = 5
 
-# 项目工作指引文件名（AGENTS.md）：会话首次加载时作为一条消息注入聊天历史
-AGENTS_FILE = "AGENTS.md"
+# 项目工作指引文件名：默认兼容 AGENTS.md / AGENT.md 两种等价命名，
+# 可通过 agents_file 参数显式指定（config.ini 的 [agent] agents_file）。
+DEFAULT_AGENTS_FILES = ("AGENTS.md", "AGENT.md")
 # AGENTS.md 指引消息的识别标记（写在内容开头）
 AGENTS_MARKER = "[AGENTS.md 项目工作指引]"
+# 指引内容注入长度上限：超出截断，避免一次性占满上下文
+MAX_AGENTS_CONTENT_CHARS = 8_000
 
 
 class TurnCancelled(Exception):
@@ -71,6 +74,7 @@ class AgentEngine:
         compress_threshold: float = 0.6,
         archiver: Optional[ContextArchiver] = None,
         sessions_dir: str = ".agents/sessions",
+        agents_file: str = "",
     ) -> None:
         self._client = client
         self._registry = registry
@@ -81,6 +85,8 @@ class AgentEngine:
         self._session_store = SessionStore(sessions_dir)
         self._mcp_loading_thread: Optional[threading.Thread] = None
         self._closed = False
+        # 指引文件名：显式指定则只查这一个，否则按 AGENTS.md / AGENT.md 顺序兼容查找
+        self._agents_files = (agents_file.strip(),) if agents_file.strip() else DEFAULT_AGENTS_FILES
 
         # 上下文窗口：显式配置 > 尝试查询模型服务 > 默认 128k（标记「默认」）
         if context_window and context_window > 0:
@@ -264,17 +270,28 @@ class AgentEngine:
 
     # ---------- AGENTS.md ----------
 
-    @staticmethod
-    def _read_agents_content(project_root: str) -> str:
-        """读取项目根目录下的 AGENTS.md 内容（不存在或读取失败时返回空串）。"""
-        try:
-            with open(os.path.join(project_root, AGENTS_FILE), "r", encoding="utf-8") as fh:
-                content = fh.read().strip()
-        except (OSError, UnicodeDecodeError):
-            return ""
-        if not content:
-            return ""
-        return f"{AGENTS_MARKER}\n{content}"
+    def _read_agents_content(self, project_root: str) -> str:
+        """读取项目根目录下的工作指引（AGENTS.md / AGENT.md 或自定义命名）。
+
+        不存在或读取失败时返回空串；超长内容截断到 MAX_AGENTS_CONTENT_CHARS。
+        """
+        for name in self._agents_files:
+            path = os.path.join(project_root, name)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    content = fh.read().strip()
+            except (OSError, UnicodeDecodeError):
+                continue
+            if not content:
+                continue
+            if len(content) > MAX_AGENTS_CONTENT_CHARS:
+                content = (
+                    content[:MAX_AGENTS_CONTENT_CHARS]
+                    + f"\n\n[指引过长，已截断，原文共 {len(content)} 字符，"
+                    f"仅注入前 {MAX_AGENTS_CONTENT_CHARS} 字符]"
+                )
+            return f"{AGENTS_MARKER}\n{content}"
+        return ""
 
     @staticmethod
     def _is_agents_message(message: Dict[str, Any]) -> bool:

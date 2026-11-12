@@ -1,4 +1,4 @@
-from protocol.meta import SERVER_INFO, REQUIRED_META_FIELDS, SUPPORTED_PROTOCOL_VERSIONS
+from protocol.meta import SERVER_INFO, REQUIRED_META_FIELDS, SUPPORTED_PROTOCOL_VERSIONS, SUPPORTED_PROTOCOL_VERSION
 from protocol.router import validate_meta, build_error_response, build_success_response, TOOL_HANDLERS, register_tool, get_tool_handler
 
 
@@ -7,6 +7,18 @@ async def handle_mcp_request(body: dict, headers: dict) -> dict:
     method = body.get("method", "")
     params = body.get("params", {})
     meta = body.get("_meta", {})
+
+    # initialize 握手：MCP 客户端连接的第一步，必须应答协议版本与 serverInfo
+    if method == "initialize":
+        requested_version = (params or {}).get("protocolVersion", SUPPORTED_PROTOCOL_VERSION)
+        return build_success_response(request_id, {
+            "protocolVersion": requested_version if requested_version in SUPPORTED_PROTOCOL_VERSIONS else SUPPORTED_PROTOCOL_VERSION,
+            "serverInfo": SERVER_INFO,
+            "capabilities": {"tools": {"listChanged": False}},
+        })
+    # 客户端握手完成通知：无应答体，返回空成功结果即可
+    if method == "notifications/initialized":
+        return build_success_response(request_id, {})
 
     errors = validate_meta(meta)
     if errors:

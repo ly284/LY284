@@ -21,14 +21,14 @@ from ..tools.base import ToolError, ToolSpec
 def resolve_skills_root(project_root: str, skills_dir: str = "") -> Optional[str]:
     """在项目根目录定位技能目录。
 
-    优先级：显式 skills_dir > <project_root>/.agentslskills > <project_root>/skills。
+    优先级：显式 skills_dir > <project_root>/.agents/skills > <project_root>/skills。
     返回第一个存在的目录；若都不存在返回 None。
     """
     if skills_dir:
         if os.path.isdir(skills_dir):
             return os.path.abspath(skills_dir)
         return None
-    for name in (".agentslskills", "skills"):
+    for name in (".agents/skills", "skills"):
         candidate = os.path.join(project_root, name)
         if os.path.isdir(candidate):
             return candidate
@@ -117,6 +117,20 @@ def _is_within(base: str, target: str) -> bool:
     base_real = os.path.realpath(base)
     target_real = os.path.realpath(target)
     return target_real == base_real or target_real.startswith(base_real + os.sep)
+
+
+# 按需加载时的内容长度上限：超出截断并标明，防止一次调用占满上下文
+MAX_SKILL_CONTENT_CHARS = 20_000
+
+
+def _clip_content(text: str) -> str:
+    if len(text) <= MAX_SKILL_CONTENT_CHARS:
+        return text
+    head = text[:MAX_SKILL_CONTENT_CHARS]
+    return (
+        f"{head}\n\n...[内容过长，已截断，共 {len(text)} 字符，"
+        f"仅保留前 {MAX_SKILL_CONTENT_CHARS} 字符；可用 filename 参数分段读取附件文件]..."
+    )
 
 
 class SkillManager:
@@ -234,7 +248,7 @@ class SkillManager:
             path = os.path.join(skill.directory, "SKILL.md")
             try:
                 with open(path, "r", encoding="utf-8") as fh:
-                    return f"{skill.name} 的 SKILL.md 全文如下:\n" + fh.read()
+                    return f"{skill.name} 的 SKILL.md 全文如下:\n" + _clip_content(fh.read())
             except OSError as exc:
                 return f"读取 SKILL.md 失败: {exc}"
         try:
@@ -248,7 +262,7 @@ class SkillManager:
             return f"无法解析文件: {filename}"
         try:
             with open(target, "r", encoding="utf-8") as fh:
-                return f"{os.path.basename(target)} 内容如下:\n" + fh.read()
+                return f"{os.path.basename(target)} 内容如下:\n" + _clip_content(fh.read())
         except OSError as exc:
             return f"读取文件失败: {exc}"
 

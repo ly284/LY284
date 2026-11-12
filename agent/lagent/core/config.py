@@ -57,6 +57,8 @@ class AgentConfig:
     context_dir: str = ".agents/context"
     sessions_dir: str = ".agents/sessions"
     compress_threshold: float = 0.6
+    # 项目工作指引文件名：留空时兼容查找 AGENTS.md / AGENT.md，填写则只查指定文件
+    agents_file: str = ""
 
 
 @dataclass(frozen=True)
@@ -197,6 +199,7 @@ def load_config(
             context_dir=context_dir,
             sessions_dir=sessions_dir,
             compress_threshold=compress_threshold,
+            agents_file=(agent_sec.get("agents_file", "") or "").strip(),
         ),
         search=search_config,
     )
@@ -231,6 +234,8 @@ sessions_dir = .agents/sessions
 # system_prompt = 你是一名乐于助人的助手。
 # 可选：技能目录（默认在项目根目录下查找 .agents/skills）
 # skills_dir =
+# 可选：项目工作指引文件名（默认兼容查找 AGENTS.md / AGENT.md；填写则只查该文件）
+# agents_file = AGENTS.md
 """
 
 

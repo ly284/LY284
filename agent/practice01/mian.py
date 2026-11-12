@@ -16,7 +16,13 @@ model = sec.get("model")
 api_key = sec.get("api_key")
 base_url = sec.get("base_url")
 
-client = OpenAI(api_key="sk-ttwguxojcefnzmrnsnplmueyqcprpntwwmxtfetanvebzrnu", base_url="https://api.siliconflow.cn/v1")
+# 密钥与地址统一从 config.ini 读取（参见 config.ini.example），不要把真实密钥写进代码
+if not api_key or not base_url:
+    raise SystemExit(
+        "缺少 LLM 配置：请复制 config.ini.example 为 config.ini，"
+        "填写 api_key / base_url / model 后重新运行"
+    )
+client = OpenAI(api_key=api_key, base_url=base_url)
 
 
 

@@ -99,11 +99,40 @@ def create_directory(path: str) -> str:
     return f"已创建目录: {os.path.abspath(path)}"
 
 
-def remove_directory(path: str) -> str:
-    if not os.path.isdir(path):
+def remove_directory(path: str, confirm: bool = False) -> str:
+    """删除目录（含非空目录），需要显式 confirm=True 才会执行。"""
+    abs_path = os.path.abspath(path)
+    if not os.path.isdir(abs_path):
         raise ToolError(f"目录不存在: {path}")
-    shutil.rmtree(path)
-    return f"已删除目录及其全部内容: {path}"
+    if not confirm:
+        raise ToolError(
+            f"删除目录是危险操作：将永久删除 {abs_path} 及其全部内容。"
+            "确认无误后请携带 confirm=true 重新调用"
+        )
+    _refuse_dangerous_target(abs_path, "删除目录")
+    shutil.rmtree(abs_path)
+    return f"已删除目录及其全部内容: {abs_path}"
+
+
+def _refuse_dangerous_target(abs_path: str, action: str) -> None:
+    """拒绝把当前工作目录、其上级目录、盘符根目录或用户主目录作为删除目标。"""
+    cwd = os.path.abspath(os.getcwd())
+    home = os.path.abspath(os.path.expanduser("~"))
+    targets = {home}
+    # 盘符根目录（Windows: C:\；POSIX: /）
+    targets.add(os.path.abspath(os.sep))
+    drive = os.path.splitdrive(abs_path)[0]
+    if drive:
+        targets.add(drive + os.sep)
+    # 当前工作目录及其所有上级目录
+    while True:
+        targets.add(cwd)
+        parent = os.path.dirname(cwd)
+        if parent == cwd:
+            break
+        cwd = parent
+    if abs_path in targets:
+        raise ToolError(f"{action}被拒绝: {abs_path} 是受保护的系统/工作目录")
 
 
 def delete_file(path: str) -> str:
@@ -214,10 +243,20 @@ FILE_TOOLS: List[ToolSpec] = [
     ),
     ToolSpec(
         name="remove_directory",
-        description="删除指定目录及其全部内容，非空目录也能删除",
+        description=(
+            "删除指定目录及其全部内容（含非空目录）。这是危险操作："
+            "必须显式传入 confirm=true 才会执行；工作目录、其上级目录、"
+            "盘符根目录与用户主目录受保护，无法删除"
+        ),
         parameters={
             "type": "object",
-            "properties": {"path": _path_prop("要删除的目录路径")},
+            "properties": {
+                "path": _path_prop("要删除的目录路径"),
+                "confirm": {
+                    "type": "boolean",
+                    "description": "是否确认删除，必须为 true 才执行；默认 false 时只返回提示",
+                },
+            },
             "required": ["path"],
         },
         handler=remove_directory,

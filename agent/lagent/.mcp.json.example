@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "本地名示例": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "env": {},
+      "cwd": ""
+    },
+    "远程示例": {
+      "url": "http://127.0.0.1:8000/mcp",
+      "timeout": 60
+    }
+  }
+}

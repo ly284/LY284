@@ -87,6 +87,7 @@ def create_agent(config: Optional[AppConfig] = None, config_path: Optional[str] 
         compress_threshold=app_config.agent.compress_threshold,
         archiver=archiver,
         sessions_dir=app_config.agent.sessions_dir,
+        agents_file=app_config.agent.agents_file,
     )
     # MCP 异步加载：引擎后台线程连接服务器并注册工具，TUI 侧边栏轮询刷新
     engine.start_mcp_loading()

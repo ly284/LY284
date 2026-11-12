@@ -1,0 +1,8 @@
+# practice01 / practice02 的配置模板。
+# 复制为 config.ini 后填写你自己的密钥（config.ini 已被 .gitignore 忽略，不会入库）。
+
+[llm]
+# OpenAI 兼容服务地址（LM Studio / SiliconFlow / 官方 OpenAI 均可）
+base_url = http://127.0.0.1:1234/v1
+model = deepseek-r1-distill-qwen-1.5b
+api_key = your-api-key-here

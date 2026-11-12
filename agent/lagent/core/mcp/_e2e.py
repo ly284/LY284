@@ -1,9 +1,11 @@
 import sys
-sys.path.insert(0, r"L:\LY284\agent\lagent")
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core import create_agent
 from core.events import ToolCallStarted, ToolCallFinished, TurnFinished, ErrorEvent
 
-engine = create_agent(config_path=r"L:\LY284\agent\lagent\config.ini")
+engine = create_agent(config_path=str(Path(__file__).resolve().parents[1] / "config.ini"))
 seen_mcp = []
 
 def run(q):

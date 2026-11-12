@@ -11,6 +11,7 @@ from .file_tools import FILE_TOOLS
 from .run_cli import build_run_cli
 from .skill_tools import build_create_skill_tool
 from .system_tools import SYSTEM_TOOLS
+from .web_read import build_read_webpage_tool
 from .web_search import DEFAULT_ENDPOINT, build_search_tool
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "ToolSpec",
     "build_beatra_tools",
     "build_create_skill_tool",
+    "build_read_webpage_tool",
     "build_recall_context_tool",
     "build_registry",
 ]
@@ -41,6 +43,7 @@ def build_registry(
     registry.register_many(build_beatra_tools())
     registry.register(build_create_skill_tool())
     registry.register(build_run_cli())
+    registry.register(build_read_webpage_tool())
     registry.register(
         build_search_tool(
             search_api_key or "",

@@ -6,7 +6,7 @@
 
 ### 1.1 技术栈
 - **语言**: Python 3.10+
-- **MCP框架**: 官方Python SDK (mcp) + FastMCP
+- **MCP框架**: 官方 Python SDK (mcp) v2 + MCPServer（原 FastMCP）
 - **Web框架**: Uvicorn + Starlette (支持Streamable HTTP)
 - **HTTP客户端**: httpx (异步HTTP请求)
 - **配置管理**: pydantic-settings
@@ -14,7 +14,7 @@
 ### 1.2 传输协议
 - 使用 **Streamable HTTP** 传输协议 (非stdio)
 - 端点: `http://localhost:8000/mcp`
-- 支持MCP协议版本: 2025-03-26
+- 支持MCP协议版本: 2025-03-26 及以上（SDK v2）
 
 ## 2. AnythingLLM API 分析
 
@@ -116,7 +116,7 @@ anythingllm-mcp-server/
 
 ```txt
 # requirements.txt
-mcp>=1.8.0
+mcp>=2.0.0
 httpx>=0.27.0
 pydantic>=2.0
 pydantic-settings>=2.0

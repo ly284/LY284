@@ -3,11 +3,11 @@ config.by
 __pycache__/
 *.pyc
 .mcp.json
-config.py
 venv/
 .venv/
 # 忽略 Agent 工作区
 work space/
 
-# 忽略带密钥的配置文件
-config.py
+# 注意：不要忽略 core/mcp/config.py —— 它是 MCP 配置加载模块（无密钥），
+# 之前用 "config.py" 一刀切会把它误伤掉，导致 lagent 无法启动。
+# 带密钥的文件只有 config.ini / .mcp.json（均已被上面的规则覆盖）。
